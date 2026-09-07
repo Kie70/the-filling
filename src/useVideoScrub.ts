@@ -30,21 +30,31 @@ export function useVideoScrub(videoSrc: string) {
   useEffect(() => {
     const video = videoRef.current!;
     const canvas = canvasRef.current!;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { alpha: false, colorSpace: 'srgb' });
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
     const controller = new AbortController();
     let bank: BankFrame[] = [];
     const lru = new Map<number, ImageBitmap | null>();
+    const loading = new Map<number, symbol>();
     let current = 0, target = 0, dur = 0;
     let ready = false, reverted = false, painted = false, building = false;
     let disposed = false, raf = 0, last = performance.now(), lastPaint = -1;
     let span = 1;
     let watchdog: ReturnType<typeof setTimeout> | undefined;
     let decoder: VideoDecoder | undefined;
-    const updateSpan = () => { span = Math.max(1, (containerRef.current?.offsetHeight ?? 0) - window.innerHeight); };
+    let fit: 'cover' | 'contain' = 'cover';
+    const updateSpan = () => {
+      span = Math.max(1, (containerRef.current?.offsetHeight ?? 0) - window.innerHeight);
+      const bounds = canvas.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.max(1, Math.round(bounds.width * dpr));
+      canvas.height = Math.max(1, Math.round(bounds.height * dpr));
+      fit = getComputedStyle(video).objectFit === 'contain' ? 'contain' : 'cover';
+      lastPaint = -1;
+    };
     const getProgress = () => Math.max(0, Math.min(1, window.scrollY / span));
     const metadata = () => { if (Number.isFinite(video.duration)) dur = video.duration; };
-    const clearCache = () => { lru.forEach(bitmap => bitmap?.close()); lru.clear(); };
+    const clearCache = () => { lru.forEach(bitmap => bitmap?.close()); lru.clear(); loading.clear(); };
     const revert = () => {
       reverted = true; ready = false; building = false; painted = false;
       controller.abort();
@@ -63,13 +73,16 @@ export function useVideoScrub(videoSrc: string) {
           continue;
         }
         lru.set(i, null);
+        const request = Symbol();
+        loading.set(i, request);
         void createImageBitmap(bank[i].blob).then(bitmap => {
-          if (disposed || reverted || !lru.has(i)) { bitmap.close(); return; }
+          if (disposed || reverted || loading.get(i) !== request || !lru.has(i)) { bitmap.close(); return; }
+          loading.delete(i);
           lru.set(i, bitmap);
         }).catch(() => { if (!disposed && !reverted) revert(); });
         while (lru.size > LRU_MAX) {
           const oldest = lru.keys().next().value!;
-          lru.get(oldest)?.close(); lru.delete(oldest);
+          lru.get(oldest)?.close(); lru.delete(oldest); loading.delete(oldest);
         }
       }
     };
@@ -87,7 +100,13 @@ export function useVideoScrub(videoSrc: string) {
           warmLRU(i);
           const bitmap = lru.get(i);
           if (bitmap && lastPaint !== i) {
-            ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+            const scale = (fit === 'contain' ? Math.min : Math.max)(canvas.width / bitmap.width, canvas.height / bitmap.height);
+            const width = bitmap.width * scale, height = bitmap.height * scale;
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.fillStyle = '#0c0e0d';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(bitmap, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
             lastPaint = i;
             if (!painted) { painted = true; setCanvasLive(true); }
           }
@@ -151,7 +170,7 @@ export function useVideoScrub(videoSrc: string) {
           const ts = frame.timestamp;
           const surface = document.createElement('canvas');
           surface.width = frame.displayWidth; surface.height = frame.displayHeight;
-          const context = surface.getContext('2d');
+          const context = surface.getContext('2d', { alpha: false, colorSpace: 'srgb' });
           if (!context) { frame.close(); failure = new Error('Canvas unavailable'); return; }
           try { context.drawImage(frame, 0, 0); } catch (error) { failure = error; }
           finally { frame.close(); }
@@ -163,7 +182,8 @@ export function useVideoScrub(videoSrc: string) {
               }
               surface.width = 0; surface.height = 0;
               completed++; resolve();
-            }, 'image/webp', 0.82);
+            // Preserve the source pixels: this short clip needs no lossy second encode.
+            }, 'image/png');
           });
           pending.add(task);
           void task.then(() => pending.delete(task));
@@ -216,7 +236,7 @@ export function useVideoScrub(videoSrc: string) {
         }
         if (disposed || reverted) return;
         bank = decoded;
-        canvas.width = track.video.width; canvas.height = track.video.height;
+        updateSpan();
         ready = true; building = false; clearTimeout(watchdog);
       } catch { if (!disposed) revert(); }
     };
@@ -225,6 +245,8 @@ export function useVideoScrub(videoSrc: string) {
     video.addEventListener('loadedmetadata', metadata);
     window.addEventListener('resize', updateSpan);
     window.addEventListener('orientationchange', updateSpan);
+    const resizeObserver = new ResizeObserver(updateSpan);
+    resizeObserver.observe(canvas);
     media.addEventListener('change', motionChange);
     window.addEventListener('load', build, { once: true });
     if (document.readyState === 'complete') void build();
@@ -234,6 +256,7 @@ export function useVideoScrub(videoSrc: string) {
       video.removeEventListener('loadedmetadata', metadata);
       window.removeEventListener('resize', updateSpan);
       window.removeEventListener('orientationchange', updateSpan);
+      resizeObserver.disconnect();
       window.removeEventListener('load', build);
       media.removeEventListener('change', motionChange);
     };
