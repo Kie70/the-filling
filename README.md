@@ -32,6 +32,12 @@ npm run preview
 
 视频随滚动变化，不会自动播放时间轴。支持减少动态效果设置；浏览器无法解码帧库时回退到视频定位。背景音轨通过用户交互开启，右上角声音图标可切换。
 
-当前部署：https://vectrus-scroll-cinema.zhuby933.chatgpt.site （私有访问）。
+## GitHub Pages
 
-GitHub 保存源码；Sites 部署需单独发布，推送 GitHub 不会自动更新线上版本。
+自动部署配置位于 `.github/workflows/pages.yml`。仓库启用 GitHub Pages（Source: GitHub Actions）后，推送 `main` 或手动运行该工作流会构建并发布网站。
+
+目标地址：https://kie70.github.io/the-filling/
+
+工作流使用 `/the-filling/` 作为构建路径，视频和音频会自动沿用该路径。本地开发仍使用根路径。
+
+当前账户方案暂不支持此私有仓库启用 Pages，需要公开仓库或升级至支持的方案。Pages 成功上线前，旧的 Sites 私有部署保留可用。
