@@ -6,7 +6,7 @@ const AUDIO_SRC = `${import.meta.env.BASE_URL}audio/classroom-original.m4a`;
 export default function BackgroundAudio() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const wanted = useRef(true);
-  const started = useRef(false);
+  const [enabled, setEnabled] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -16,10 +16,9 @@ export default function BackgroundAudio() {
     if (audio.error) { audio.load(); setFailed(false); }
     // Invoke directly from the gesture, before any asynchronous work.
     void audio.play().then(() => {
-      started.current = true;
       if (!wanted.current || document.hidden) audio.pause();
     }).catch(() => {
-      // Autoplay denial leaves the explicit play button available.
+      // Keep the default sound preference enabled; retry on the first gesture.
       setPlaying(false);
     });
   };
@@ -35,11 +34,12 @@ export default function BackgroundAudio() {
     };
     const visibility = () => {
       if (document.hidden) audio.pause();
-      else if (wanted.current && started.current) play();
+      else if (wanted.current) play();
     };
     window.addEventListener('pointerup', begin);
     window.addEventListener('keydown', begin);
     document.addEventListener('visibilitychange', visibility);
+    if (!document.hidden && wanted.current) play();
     return () => {
       window.removeEventListener('pointerup', begin);
       window.removeEventListener('keydown', begin);
@@ -50,14 +50,17 @@ export default function BackgroundAudio() {
 
   const toggle = () => {
     const audio = audioRef.current!;
-    if (!audio.paused) { wanted.current = false; audio.pause(); }
-    else { wanted.current = true; play(); }
+    const next = failed || !wanted.current;
+    wanted.current = next;
+    setEnabled(next);
+    if (next) play();
+    else audio.pause();
   };
 
   return <>
     <audio ref={audioRef} src={AUDIO_SRC} loop preload="auto" onPlaying={() => { setPlaying(true); setFailed(false); }} onPause={() => setPlaying(false)} onError={() => { setFailed(true); setPlaying(false); }} />
-    <button type="button" data-music-control className="music-control" onClick={toggle} aria-label={playing ? '关闭背景音乐' : failed ? '重试播放背景音乐' : '开启背景音乐'} aria-pressed={playing}>
-      {playing ? <Volume2 size={22} aria-hidden="true" /> : <VolumeX size={22} aria-hidden="true" />}
+    <button type="button" data-music-control data-playing={playing} className="music-control" onClick={toggle} aria-label={failed ? '重试播放背景音乐' : enabled ? '关闭背景音乐' : '开启背景音乐'} aria-pressed={enabled}>
+      {enabled && !failed ? <Volume2 size={22} aria-hidden="true" /> : <VolumeX size={22} aria-hidden="true" />}
     </button>
   </>;
 }
