@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 
-const AUDIO_SRC = `${import.meta.env.BASE_URL}audio/classroom-ambience.wav`;
+const AUDIO_SRC = `${import.meta.env.BASE_URL}audio/classroom-original.m4a`;
 
 export default function BackgroundAudio() {
   const audioRef = useRef<HTMLAudioElement>(null);

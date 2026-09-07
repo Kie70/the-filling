@@ -26,7 +26,7 @@ npm run preview
 - `src/LandingContent.tsx`：章节目录和故事排版。
 - `src/BackgroundAudio.tsx`：背景音乐及声音开关。
 - `public/videos/classroom-horror.mp4`：页面使用的视频。
-- `public/audio/classroom-ambience.wav`：背景音乐。
+- `public/audio/classroom-original.m4a`：从页面原视频直接提取的背景音轨。
 - `exports/`：滚动进度 88%–95% 的往返循环视频。
 - `.openai/hosting.json`：现有 Sites 静态部署配置。
 
